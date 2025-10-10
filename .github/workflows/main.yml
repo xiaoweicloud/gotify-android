@@ -16,15 +16,19 @@ jobs:
         run: ./gradlew build --stacktrace
       - if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         run: |
-          # 使用调试模式构建，不需要签名配置
-          ./gradlew assembleDebug --stacktrace
-          # 调试版本通常输出在debug目录下
-          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/Gotify-debug.apk
+          export RELEASE_STORE_FILE=$(pwd)/gotfy-release-key.jks
+          echo $RELEASE_KEY | base64 -d > $RELEASE_STORE_FILE
+          ./gradlew -Psign build --stacktrace
+          cp app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/Gotify.apk
+        env:
+          RELEASE_KEY: ${{ secrets.RELEASE_KEY }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.STOREPASS }}
+          RELEASE_KEY_ALIAS: gotify-release-key
+          RELEASE_KEY_PASSWORD: ${{ secrets.KEYPASS }}
       - if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          # 更新为调试版本的APK路径
-          file: app/build/outputs/apk/debug/Gotify-debug.apk
+          file: app/build/outputs/apk/release/Gotify.apk
           tag: ${{ github.ref }}
           overwrite: true
