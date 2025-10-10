@@ -19,7 +19,7 @@ jobs:
 
       - name: Generate debug keystore
         run: |
-          # 自动生成Android调试密钥（无需手动配置）
+          # 自动生成Android调试密钥
           keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           # 将生成的密钥库移动到项目目录
           mkdir -p ~/.android/
@@ -29,37 +29,30 @@ jobs:
         run: ./gradlew assembleDebug --stacktrace
 
       - name: Prepare APK for release
+        id: prepare_apk
         run: |
           # 根据触发方式命名APK
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/Gotify-debug-manual-${{ github.sha }}.apk
+            APK_NAME="Gotify-debug-manual-${{ github.sha }}.apk"
+            TAG_NAME="manual-build-${{ github.sha }}"
           elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/Gotify-debug-${{ github.ref_name }}.apk
+            APK_NAME="Gotify-debug-${{ github.ref_name }}.apk"
+            TAG_NAME="${{ github.ref }}"
           else
-            cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/Gotify-debug-${{ github.sha }}.apk
+            APK_NAME="Gotify-debug-${{ github.sha }}.apk"
+            TAG_NAME="debug-build-${{ github.sha }}"
           fi
+          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/$APK_NAME
+          echo "apk_name=$APK_NAME" >> $GITHUB_OUTPUT
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
 
       - name: Upload to Releases (manual trigger or tag)
         if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/') }}
         uses: svenstaro/upload-release-action@v2
         with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}  # 无需手动配置，GitHub自动提供
-          # 生成发布标签
-          tag: ${{ startsWith(github.ref, 'refs/tags/') && github.ref || 'debug-build-' }}${{ github.sha }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ steps.prepare_apk.outputs.tag_name }}
           overwrite: true
-          # 选择要上传的APK
-          file: ${{
-            github.event_name == 'workflow_dispatch' ?
-            'app/build/outputs/apk/debug/Gotify-debug-manual-${{ github.sha }}.apk' :
-            (startsWith(github.ref, 'refs/tags/') ?
-            'app/build/outputs/apk/debug/Gotify-debug-${{ github.ref_name }}.apk' :
-            'app/build/outputs/apk/debug/Gotify-debug-${{ github.sha }}.apk')
-        }}
-          asset_name: ${{
-            github.event_name == 'workflow_dispatch' ?
-            'Gotify-debug-manual-${{ github.sha }}.apk' :
-            (startsWith(github.ref, 'refs/tags/') ?
-            'Gotify-debug-${{ github.ref_name }}.apk' :
-            'Gotify-debug-${{ github.sha }}.apk')
-        }}
+          file: app/build/outputs/apk/debug/${{ steps.prepare_apk.outputs.apk_name }}
+          asset_name: ${{ steps.prepare_apk.outputs.apk_name }}
           body: ${{ github.event_name == 'workflow_dispatch' ? 'Manual debug build' : 'Auto-generated debug build' }}
