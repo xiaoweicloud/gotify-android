@@ -12,6 +12,9 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: 17
+      # 添加这一步来设置gradlew的可执行权限
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
       - if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         run: ./gradlew build --stacktrace
       - if: ${{ startsWith(github.ref, 'refs/tags/v') }}
