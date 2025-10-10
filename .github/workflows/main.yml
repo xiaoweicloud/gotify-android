@@ -1,37 +1,55 @@
 on: [push, pull_request]
 
-name: Build
+name: Build and Release
 
 jobs:
-  check:
-    name: Check
+  build-and-release:
+    name: Build and Release
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 拉取所有历史以便生成变更日志
+
       - uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: 17
-      # 添加这一步来设置gradlew的可执行权限
+
       - name: Make gradlew executable
         run: chmod +x ./gradlew
-      - if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+
+      - name: Build project
         run: ./gradlew build --stacktrace
-      - if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+
+      - name: Prepare release (if tagged)
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         run: |
           export RELEASE_STORE_FILE=$(pwd)/gotfy-release-key.jks
           echo $RELEASE_KEY | base64 -d > $RELEASE_STORE_FILE
           ./gradlew -Psign build --stacktrace
-          cp app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/Gotify.apk
+          cp app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/Gotify-${{ github.ref_name }}.apk
         env:
           RELEASE_KEY: ${{ secrets.RELEASE_KEY }}
           RELEASE_STORE_PASSWORD: ${{ secrets.STOREPASS }}
           RELEASE_KEY_ALIAS: gotify-release-key
           RELEASE_KEY_PASSWORD: ${{ secrets.KEYPASS }}
-      - if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+
+      - name: Generate release notes
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          echo "## What's new" > release-notes.md
+          git log --pretty=format:"- %s" $(git describe --tags --abbrev=0 HEAD^)..HEAD >> release-notes.md
+
+      - name: Create and publish Release
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: app/build/outputs/apk/release/Gotify.apk
+          file: app/build/outputs/apk/release/Gotify-${{ github.ref_name }}.apk
+          asset_name: Gotify-${{ github.ref_name }}.apk
           tag: ${{ github.ref }}
+          release_name: Release ${{ github.ref_name }}
+          body_path: release-notes.md
           overwrite: true
+          prerelease: false
