@@ -7,42 +7,39 @@ jobs:
     name: Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4  # 拉取仓库代码
+      - uses: actions/checkout@v4
 
-      # 关键步骤：给 gradlew 添加可执行权限（解决 Permission denied 问题）
-      - name: Make gradlew executable
-        run: chmod +x ./gradlew
-
-      - uses: actions/setup-java@v4  # 配置 Java 环境
+      - uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: 17
 
-      # 【普通构建】：非 tag 触发时，执行基础构建
+      # 添加这一步以确保gradlew有可执行权限
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
       - if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         run: ./gradlew build --stacktrace
 
-      # 【发布构建】：带 tag（以 v 开头，如 v1.0.0）触发时，执行签名构建 + 生成 APK + 上传 Release
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
       - if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         run: |
-          # 解密并写入签名文件
           export RELEASE_STORE_FILE=$(pwd)/gotfy-release-key.jks
           echo $RELEASE_KEY | base64 -d > $RELEASE_STORE_FILE
-          # 执行带签名的构建
           ./gradlew -Psign build --stacktrace
-          # 重命名 APK 以便发布
           cp app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/Gotify.apk
         env:
-          RELEASE_KEY: ${{ secrets.RELEASE_KEY }}           # 签名文件的 base64 密文（仓库 Secrets 中配置）
-          RELEASE_STORE_PASSWORD: ${{ secrets.STOREPASS }} # 签名仓库密码（仓库 Secrets 中配置）
-          RELEASE_KEY_ALIAS: gotify-release-key            # 签名别名
-          RELEASE_KEY_PASSWORD: ${{ secrets.KEYPASS }}     # 签名密钥密码（仓库 Secrets 中配置）
+          RELEASE_KEY: ${{ secrets.RELEASE_KEY }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.STOREPASS }}
+          RELEASE_KEY_ALIAS: gotify-release-key
+          RELEASE_KEY_PASSWORD: ${{ secrets.KEYPASS }}
 
-      # 上传 Release（仅 tag 触发时执行）
       - if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         uses: svenstaro/upload-release-action@v2
         with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }} # GitHub 自动提供的令牌，用于操作 Release
-          file: app/build/outputs/apk/release/Gotify.apk # 要上传的 APK 文件路径
-          tag: ${{ github.ref }}                 # 关联的 tag（如 refs/tags/v1.0.0）
-          overwrite: true                        # 允许覆盖同名文件
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: app/build/outputs/apk/release/Gotify.apk
+          tag: ${{ github.ref }}
+          overwrite: true
